@@ -1,4 +1,4 @@
-const CACHE = 'counter-pwa-v1';
+cconst CACHE = 'counter-pwa-v2';
 const ASSETS = ['./','./index.html','./manifest.webmanifest'];
 
 self.addEventListener('install', e => {
