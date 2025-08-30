@@ -7,54 +7,117 @@
   <title>Shared Tap Counter</title>
   <link rel="manifest" href="manifest.webmanifest">
   <style>
-    :root { --bg:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --accent:#22c55e; --disabled:#334155; }
+    :root { --bg:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --accent:#22c55e; --danger:#ef4444; --disabled:#334155; }
     *{ box-sizing:border-box; }
     html,body{ height:100%; margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,'Helvetica Neue',Arial,sans-serif; background:var(--bg); color:var(--fg); }
     .wrap{ min-height:100%; display:grid; place-items:center; padding:24px; }
-    .card{ width:100%; max-width:560px; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:24px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,0.3); }
+    .card{ width:100%; max-width:600px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+           border-radius:20px; padding:24px; text-align:center; box-shadow:0 10px 25px rgba(0,0,0,.3);}
     .title{ font-size:14px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:10px; }
     .last{ font-size:18px; margin-bottom:20px; color:var(--fg); }
     .count{ font-size:clamp(64px,16vw,120px); font-weight:800; margin:10px 0 24px; line-height:1; }
-    .btn{ display:inline-grid; place-items:center; width:160px; height:160px; border-radius:50%; font-size:22px; font-weight:700; border:none; background:var(--accent); color:#062a12; cursor:pointer; transition:transform .06s ease,opacity .2s ease; -webkit-tap-highlight-color:transparent; user-select:none; }
+    .row{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    .btn{
+      display:inline-grid; place-items:center; min-width:160px; height:160px; border-radius:50%;
+      font-size:22px; font-weight:700; border:none; background:var(--accent); color:#062a12;
+      cursor:pointer; transition:transform .06s ease, opacity .2s ease; -webkit-tap-highlight-color:transparent; user-select:none;
+    }
     .btn:active{ transform:scale(.98); }
     .btn[disabled]{ background:var(--disabled); color:#9ca3af; cursor:not-allowed; opacity:.8; }
+    .btn-chip{
+      height:48px; padding:0 14px; border-radius:14px; background:transparent; color:var(--muted);
+      border:1px solid rgba(255,255,255,.18); font-size:14px; font-weight:600; cursor:pointer;
+    }
+    .btn-chip:hover{ color:#fff; border-color:rgba(255,255,255,.3); }
     .hint{ margin-top:14px; color:var(--muted); font-size:14px; min-height:20px; }
     .footer{ margin-top:26px; font-size:12px; color:var(--muted); }
+
+    /* Modal shared */
+    .backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; align-items:center; justify-content:center; padding:16px; }
+    .backdrop.show{ display:flex; }
+    .modal{ width:100%; max-width:520px; max-height:80vh; overflow:auto; background:#0b1326;
+      border:1px solid rgba(255,255,255,.1); border-radius:16px; padding:20px; }
+    .modal h2{ margin:0 0 10px; font-size:18px; }
+    .modal p{ margin:0 0 16px; color:var(--muted); }
+    .modal .actions{ display:flex; justify-content:flex-end; gap:10px; }
+    .btn-secondary, .btn-danger{
+      padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:transparent; color:var(--fg); font-weight:600; cursor:pointer;
+    }
+    .btn-danger{ background:var(--danger); border-color:transparent; color:#fff; }
+    .list{ margin-top:8px; border-top:1px solid rgba(255,255,255,.08); }
+    .rowitem{ display:flex; justify-content:space-between; padding:10px 2px; border-bottom:1px solid rgba(255,255,255,.06); }
+    .rowitem .day{ color:#e5e7eb; font-weight:600; }
+    .rowitem .val{ color:#94a3b8; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
+    <div class="card" role="application">
       <div class="title">Last Tap (CET/Belgrade)</div>
       <div id="last" class="last">Never</div>
+
       <div id="count" class="count">0</div>
-      <button id="tap" class="btn">Tap</button>
+
+      <div class="row">
+        <button id="tap" class="btn" aria-live="polite">Tap</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="reset" class="btn-chip" aria-label="Reset counter">Reset</button>
+        <button id="stats" class="btn-chip" aria-label="Show statistics">Statistics</button>
+      </div>
+
       <div id="hint" class="hint"></div>
-      <div class="footer">Shared state via Firebase • Add to home screen</div>
+      <div class="footer">Shared via Firebase • Auto-resets 23:59 CET • Works offline as PWA</div>
     </div>
   </div>
 
-  <!-- Firebase scripts and app logic -->
+  <!-- Confirm Reset Modal -->
+  <div id="confirmModal" class="backdrop" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" aria-hidden="true">
+    <div class="modal">
+      <h2 id="confirmTitle">Reset counter?</h2>
+      <p>Are you sure you want to reset?</p>
+      <div class="actions">
+        <button id="confirmNo" class="btn-secondary">No</button>
+        <button id="confirmYes" class="btn-danger">Yes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Statistics Modal -->
+  <div id="statsModal" class="backdrop" role="dialog" aria-modal="true" aria-labelledby="statsTitle" aria-hidden="true">
+    <div class="modal">
+      <h2 id="statsTitle">Daily Statistics</h2>
+      <p>Totals recorded at the end of each day (just before 23:59 CET).</p>
+      <div id="statsList" class="list"></div>
+      <div class="actions" style="margin-top:10px">
+        <button id="statsClose" class="btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
-    import { getFirestore, doc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+    import {
+      getFirestore, doc, collection, query, orderBy, limit, getDocs,
+      onSnapshot, runTransaction, setDoc
+    } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 
-    // Firebase configuration for your project
+    // Use your existing config (already in your file earlier)
     const firebaseConfig = {
-      apiKey: "AIzaSyC1drhFZWIVJrf4ecHGuIxjrPf4gyHjcBq",
-      authDomain: "tap-counter-b6c0f.firebaseapp.com",
-      projectId: "tap-counter-b6c0f",
-      storageBucket: "tap-counter-b6c0f.appspot.com",
-      messagingSenderId: "857495296053",
-      appId: "1:857495296053:web:fb0fefa7161fdb7b130c7c"
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
-    const counterRef = doc(db, 'counter', 'state');
+    const db  = getFirestore(app);
 
-    // Constants
+    const stateRef  = doc(db, 'counter', 'state');             // shared rolling state
+    const histCol   = collection(db, 'counterHistory');        // daily totals
+
     const LOCK_MS = 5 * 60 * 1000;
     const TZ = 'Europe/Belgrade';
 
@@ -63,69 +126,191 @@
     const elLast  = document.getElementById('last');
     const elTap   = document.getElementById('tap');
     const elHint  = document.getElementById('hint');
+    const elReset = document.getElementById('reset');
+    const elStats = document.getElementById('stats');
 
-    // Formatters
-    function fmt(ts) {
-      if (!ts) return 'Never';
-      return new Intl.DateTimeFormat(undefined, {
-        timeZone: TZ,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit'
+    const modalConfirm   = document.getElementById('confirmModal');
+    const btnNo          = document.getElementById('confirmNo');
+    const btnYes         = document.getElementById('confirmYes');
+
+    const modalStats     = document.getElementById('statsModal');
+    const btnStatsClose  = document.getElementById('statsClose');
+    const elStatsList    = document.getElementById('statsList');
+
+    // -------- Time helpers for TZ (handles DST) ----------
+    function tzParts(d){
+      const f = new Intl.DateTimeFormat('en-CA', {
+        timeZone: TZ, hour12:false,
+        year:'numeric', month:'2-digit', day:'2-digit',
+        hour:'2-digit', minute:'2-digit', second:'2-digit'
+      }).formatToParts(d);
+      const m={}; f.forEach(p=>m[p.type]=p.value);
+      m.year = +m.year; m.month = +m.month; m.day = +m.day;
+      m.hour = +m.hour; m.minute = +m.minute; m.second = +m.second;
+      return m;
+    }
+    function tzOffsetMinutes(utcDate){ // offset for TZ at given instant
+      const p = tzParts(utcDate);
+      const asUTC = Date.UTC(p.year, p.month-1, p.day, p.hour, p.minute, p.second);
+      return (asUTC - utcDate.getTime())/60000;
+    }
+    function tzEpochMillis(y,m,d,hh,mm,ss){ // local TZ datetime -> epoch ms
+      const approxUTCms = Date.UTC(y, m-1, d, hh, mm, ss);
+      const off = tzOffsetMinutes(new Date(approxUTCms));
+      return Date.UTC(y, m-1, d, hh, mm, ss) - off*60000;
+    }
+    function todayKeyTZ(now){
+      const p = tzParts(new Date(now));
+      return `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;
+    }
+    function computeNextReset(now){
+      const p = tzParts(new Date(now));
+      let target = tzEpochMillis(p.year, p.month, p.day, 23, 59, 0);
+      if (now >= target) {
+        // tomorrow
+        const d = new Date(now + 86400000);
+        const t = tzParts(d);
+        target = tzEpochMillis(t.year, t.month, t.day, 23, 59, 0);
+      }
+      return target;
+    }
+
+    // -------- Rendering & lock UI ----------
+    function fmt(ts){
+      if(!ts) return 'Never';
+      return new Intl.DateTimeFormat(undefined,{
+        timeZone:TZ, year:'numeric', month:'2-digit', day:'2-digit',
+        hour:'2-digit', minute:'2-digit', second:'2-digit'
       }).format(new Date(ts));
     }
-    function msToMMSS(ms) {
+    function msToMMSS(ms){
       const s = Math.max(0, Math.floor(ms/1000));
-      const mm = Math.floor(s/60);
-      const ss = s % 60;
-      return String(mm).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
+      return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+    }
+    function renderLockUI(st){
+      const now = Date.now();
+      if (now < (st.nextAllowed || 0)) {
+        elTap.disabled = true;
+        elHint.textContent = `Locked: ${msToMMSS((st.nextAllowed||0) - now)}`;
+      } else {
+        elTap.disabled = false;
+        elHint.textContent = '';
+      }
     }
 
-    // Live listener to update UI when state changes
-    onSnapshot(counterRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        elCount.textContent = data.count ?? 0;
-        elLast.textContent  = fmt(data.lastTap);
-        const now  = Date.now();
-        const next = data.nextAllowed || 0;
-        if (now < next) {
-          elTap.disabled = true;
-          elHint.textContent = 'Locked: ' + msToMMSS(next - now);
-        } else {
-          elTap.disabled = false;
-          elHint.textContent = '';
+    // -------- Rollover (auto daily reset at 23:59 CET) ----------
+    async function ensureRollover() {
+      const now = Date.now();
+      await runTransaction(db, async (txn) => {
+        const snap = await txn.get(stateRef);
+        let st = snap.exists() ? snap.data() : null;
+
+        if (!st) {
+          // init state
+          const dayKey = todayKeyTZ(now);
+          const nextReset = computeNextReset(now);
+          txn.set(stateRef, { count:0, lastTap:null, nextAllowed:0, dayKey, nextReset });
+          return;
         }
-      } else {
-        // Document does not exist; initialize with default values
-        runTransaction(db, async (txn) => {
-          txn.set(counterRef, { count: 0, lastTap: null, nextAllowed: 0 });
-        });
-      }
+
+        if (!st.nextReset) {
+          st.nextReset = computeNextReset(now);
+        }
+
+        if (now >= st.nextReset) {
+          // Save the finished day's total to history, keyed by that day's dayKey
+          const finishedDayKey = st.dayKey || todayKeyTZ(now - 86400000);
+          const dayDoc = doc(histCol, finishedDayKey);
+          txn.set(dayDoc, { day: finishedDayKey, count: st.count ?? 0 }, { merge:true });
+
+          // Start new day
+          const newDayKey = todayKeyTZ(now);
+          const newNextReset = computeNextReset(now);
+          txn.set(stateRef, { count:0, lastTap:null, nextAllowed:0, dayKey: newDayKey, nextReset: newNextReset }, { merge:true });
+        }
+      });
+    }
+
+    // Keep checking rollover periodically (and also on user actions)
+    setInterval(ensureRollover, 5000);
+    ensureRollover().catch(console.error);
+
+    // -------- Live sync to UI ----------
+    onSnapshot(stateRef, (snap) => {
+      const st = snap.data() || { count:0, lastTap:null, nextAllowed:0, dayKey: todayKeyTZ(Date.now()) };
+      elCount.textContent = st.count ?? 0;
+      elLast.textContent  = fmt(st.lastTap);
+      renderLockUI(st);
     });
 
-    // Tap handler with atomic transaction
+    // -------- Tap handler (atomic) ----------
     elTap.addEventListener('click', async () => {
+      await ensureRollover();
       await runTransaction(db, async (txn) => {
-        const docSnap = await txn.get(counterRef);
-        const data    = docSnap.data() || { count: 0, lastTap: 0, nextAllowed: 0 };
-        const now     = Date.now();
-        if (now < (data.nextAllowed || 0)) return; // still locked; ignore tap
-        txn.update(counterRef, {
-          count: (data.count || 0) + 1,
+        const snap = await txn.get(stateRef);
+        const st = snap.data() || {};
+        const now = Date.now();
+        if (now < (st.nextAllowed || 0)) return;
+        txn.set(stateRef, {
+          count: (st.count || 0) + 1,
           lastTap: now,
-          nextAllowed: now + LOCK_MS
-        });
+          nextAllowed: now + LOCK_MS,
+          dayKey: st.dayKey || todayKeyTZ(now),
+          nextReset: st.nextReset || computeNextReset(now)
+        }, { merge:true });
       });
-      if (navigator.vibrate) {
-        try {
-          navigator.vibrate(10);
-        } catch(e) {}
-      }
+      if (navigator.vibrate) navigator.vibrate(10);
     });
+
+    // -------- Manual Reset with confirm ----------
+    function openConfirm(){ modalConfirm.classList.add('show'); modalConfirm.setAttribute('aria-hidden','false'); btnNo.focus(); }
+    function closeConfirm(){ modalConfirm.classList.remove('show'); modalConfirm.setAttribute('aria-hidden','true'); }
+
+    elReset.addEventListener('click', openConfirm);
+    btnNo.addEventListener('click', closeConfirm);
+    btnYes.addEventListener('click', async () => {
+      await runTransaction(db, async (txn) => {
+        const snap = await txn.get(stateRef);
+        const now = Date.now();
+        const dayKey = todayKeyTZ(now);
+        txn.set(stateRef, { count:0, lastTap:null, nextAllowed:0, dayKey, nextReset: computeNextReset(now) }, { merge:true });
+      });
+      if (navigator.vibrate) navigator.vibrate([10,40,10]);
+      closeConfirm();
+    });
+
+    // -------- Statistics modal ----------
+    function openStats(){ modalStats.classList.add('show'); modalStats.setAttribute('aria-hidden','false'); loadStats(); }
+    function closeStats(){ modalStats.classList.remove('show'); modalStats.setAttribute('aria-hidden','true'); }
+
+    elStats.addEventListener('click', openStats);
+    btnStatsClose.addEventListener('click', closeStats);
+
+    async function loadStats(){
+      elStatsList.innerHTML = '<div class="rowitem"><span class="day">Loading…</span><span class="val"></span></div>';
+      try {
+        const q = query(histCol, orderBy('day','desc'), limit(365));
+        const snap = await getDocs(q);
+        if (snap.empty) {
+          elStatsList.innerHTML = '<div class="rowitem"><span class="day">No data yet</span><span class="val">—</span></div>';
+          return;
+        }
+        const rows = [];
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          rows.push(`<div class="rowitem"><span class="day">${d.day}</span><span class="val">${d.count ?? 0}</span></div>`);
+        });
+        elStatsList.innerHTML = rows.join('');
+      } catch (e) {
+        console.error(e);
+        elStatsList.innerHTML = '<div class="rowitem"><span class="day">Error</span><span class="val">See console</span></div>';
+      }
+    }
+
+    // -------- Service worker (unchanged) ----------
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
   </script>
 </body>
 </html>
