@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111827" />
+  <title>Tap Counter</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <style>
+    :root {
+      --bg: #0f172a;
+      --fg: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22c55e;
+      --disabled: #334155;
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+    }
+    .wrap { min-height: 100%; display: grid; place-items: center; padding: 24px; }
+    .card {
+      max-width: 560px; width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 24px; text-align: center;
+    }
+    .title { font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+    .last { font-size: 18px; margin-bottom: 20px; color: var(--fg); }
+    .count { font-size: clamp(64px, 16vw, 120px); font-weight: 800; margin: 10px 0 24px; }
+    .btn {
+      width: 160px; height: 160px;
+      border-radius: 50%;
+      font-size: 22px; font-weight: 700;
+      border: none; background: var(--accent); color: #062a12;
+      cursor: pointer; transition: transform 0.06s ease, opacity 0.2s ease;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn[disabled] { background: var(--disabled); color: #9ca3af; cursor: not-allowed; }
+    .hint { margin-top: 14px; color: var(--muted); font-size: 14px; min-height: 20px; }
+    .footer { margin-top: 26px; font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="title">Last Tap (CET/Belgrade)</div>
+      <div id="last" class="last">Never</div>
+
+      <div id="count" class="count">0</div>
+
+      <button id="tap" class="btn">Tap</button>
+      <div id="hint" class="hint"></div>
+
+      <div class="footer">Works offline • Install from browser menu</div>
+    </div>
+  </div>
+
+  <script>
+    const LOCK_MS = 5 * 60 * 1000; // 5 min
+    const TZ = 'Europe/Belgrade';
+
+    const store = {
+      get() { return JSON.parse(localStorage.getItem('tapState')||'{}'); },
+      set(o) { localStorage.setItem('tapState', JSON.stringify(o)); }
+    };
+
+    const elCount = document.getElementById('count');
+    const elLast = document.getElementById('last');
+    const elTap = document.getElementById('tap');
+    const elHint = document.getElementById('hint');
+
+    function fmt(ts) {
+      if (!ts) return 'Never';
+      return new Intl.DateTimeFormat(undefined,{
+        timeZone:TZ, year:'numeric',month:'2-digit',day:'2-digit',
+        hour:'2-digit',minute:'2-digit',second:'2-digit'
+      }).format(new Date(ts));
+    }
+    function msToMMSS(ms) {
+      const s = Math.max(0,Math.floor(ms/1000));
+      return `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+    }
+
+    function render() {
+      const st=store.get(), now=Date.now(), next=st.nextAllowed||0;
+      elCount.textContent=st.count||0;
+      elLast.textContent=fmt(st.lastTap);
+      if(now<next){ elTap.disabled=true; elHint.textContent=`Locked: ${msToMMSS(next-now)}`;}
+      else{ elTap.disabled=false; elHint.textContent=''; }
+    }
+
+    elTap.onclick=()=>{
+      const st=store.get(), now=Date.now();
+      if(now<(st.nextAllowed||0))return;
+      store.set({count:(st.count||0)+1,lastTap:now,nextAllowed:now+LOCK_MS});
+      render();
+      if(navigator.vibrate)navigator.vibrate(10);
+    };
+
+    setInterval(render,500);
+    if(!store.get().count) store.set({count:0});
+    render();
+    if('serviceWorker' in navigator) window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
+  </script>
+</body>
+</html>
