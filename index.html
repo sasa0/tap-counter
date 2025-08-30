@@ -3,8 +3,9 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#111827" />
+  <meta name="theme-color" content="#0f172a" />
   <title>Shared Tap Counter</title>
+  <link rel="manifest" href="manifest.webmanifest">
   <style>
     :root { --bg:#0f172a; --fg:#e5e7eb; --muted:#94a3b8; --accent:#22c55e; --disabled:#334155; }
     *{ box-sizing:border-box; }
@@ -27,52 +28,63 @@
       <div class="title">Last Tap (CET/Belgrade)</div>
       <div id="last" class="last">Never</div>
       <div id="count" class="count">0</div>
-      <button id="tap" class="btn" aria-live="polite">Tap</button>
+      <button id="tap" class="btn">Tap</button>
       <div id="hint" class="hint"></div>
       <div class="footer">Shared state via Firebase • Add to home screen</div>
     </div>
   </div>
 
-  <!-- Firebase SDKs and app logic -->
+  <!-- Firebase scripts and app logic -->
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
-    import { getFirestore, doc, getDoc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+    import { getFirestore, doc, onSnapshot, runTransaction } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
 
-    // TODO: replace with your Firebase project config
+    // Firebase configuration for your project
     const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "YOUR_AUTH_DOMAIN",
-      projectId: "YOUR_PROJECT_ID",
-      storageBucket: "YOUR_STORAGE_BUCKET",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
+      apiKey: "AIzaSyC1drhFZWIVJrf4ecHGuIxjrPf4gyHjcBq",
+      authDomain: "tap-counter-b6c0f.firebaseapp.com",
+      projectId: "tap-counter-b6c0f",
+      storageBucket: "tap-counter-b6c0f.appspot.com",
+      messagingSenderId: "857495296053",
+      appId: "1:857495296053:web:fb0fefa7161fdb7b130c7c"
     };
 
+    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    const db  = getFirestore(app);
-    const counterRef = doc(db, 'counter', 'state'); // a single document to hold count/state
+    const db = getFirestore(app);
+    const counterRef = doc(db, 'counter', 'state');
 
+    // Constants
     const LOCK_MS = 5 * 60 * 1000;
     const TZ = 'Europe/Belgrade';
+
+    // UI elements
     const elCount = document.getElementById('count');
     const elLast  = document.getElementById('last');
     const elTap   = document.getElementById('tap');
     const elHint  = document.getElementById('hint');
 
+    // Formatters
     function fmt(ts) {
       if (!ts) return 'Never';
-      return new Intl.DateTimeFormat(undefined,{
-        timeZone: TZ, year:'numeric', month:'2-digit', day:'2-digit',
-        hour:'2-digit', minute:'2-digit', second:'2-digit'
+      return new Intl.DateTimeFormat(undefined, {
+        timeZone: TZ,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
       }).format(new Date(ts));
     }
     function msToMMSS(ms) {
       const s = Math.max(0, Math.floor(ms/1000));
-      const mm = Math.floor(s/60), ss = s % 60;
-      return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+      const mm = Math.floor(s/60);
+      const ss = s % 60;
+      return String(mm).padStart(2,'0') + ':' + String(ss).padStart(2,'0');
     }
 
-    // Listen for remote updates to keep all devices in sync
+    // Live listener to update UI when state changes
     onSnapshot(counterRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -82,36 +94,36 @@
         const next = data.nextAllowed || 0;
         if (now < next) {
           elTap.disabled = true;
-          elHint.textContent = `Locked: ${msToMMSS(next - now)} remaining`;
+          elHint.textContent = 'Locked: ' + msToMMSS(next - now);
         } else {
           elTap.disabled = false;
           elHint.textContent = '';
         }
       } else {
-        // initialise document if it doesn't exist
+        // Document does not exist; initialize with default values
         runTransaction(db, async (txn) => {
-          txn.set(counterRef, { count:0, lastTap:null, nextAllowed:0 });
+          txn.set(counterRef, { count: 0, lastTap: null, nextAllowed: 0 });
         });
       }
     });
 
-    // Tap handler: run a transaction to enforce the lock and update state atomically
+    // Tap handler with atomic transaction
     elTap.addEventListener('click', async () => {
-      try {
-        await runTransaction(db, async (txn) => {
-          const docSnap = await txn.get(counterRef);
-          const data    = docSnap.data() || { count:0, lastTap:0, nextAllowed:0 };
-          const now     = Date.now();
-          if (now < (data.nextAllowed || 0)) return; // still locked; ignore tap
-          txn.update(counterRef, {
-            count: (data.count || 0) + 1,
-            lastTap: now,
-            nextAllowed: now + LOCK_MS
-          });
+      await runTransaction(db, async (txn) => {
+        const docSnap = await txn.get(counterRef);
+        const data    = docSnap.data() || { count: 0, lastTap: 0, nextAllowed: 0 };
+        const now     = Date.now();
+        if (now < (data.nextAllowed || 0)) return; // still locked; ignore tap
+        txn.update(counterRef, {
+          count: (data.count || 0) + 1,
+          lastTap: now,
+          nextAllowed: now + LOCK_MS
         });
-        if (navigator.vibrate) navigator.vibrate(10);
-      } catch(e) {
-        console.error('Tap failed', e);
+      });
+      if (navigator.vibrate) {
+        try {
+          navigator.vibrate(10);
+        } catch(e) {}
       }
     });
   </script>
